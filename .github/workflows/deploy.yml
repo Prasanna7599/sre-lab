@@ -1,66 +1,66 @@
 name: Build and Deploy
 
 on:
-push:
-branches: [main]
+  push:
+    branches: [main]
 
 permissions:
-contents: read
+  contents: read
 
 concurrency:
-group: sre-lab-deploy
-cancel-in-progress: false
+  group: sre-lab-deploy
+  cancel-in-progress: false
 
 jobs:
-build:
-runs-on: ubuntu-latest
-permissions:
-contents: read
-packages: write
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
-steps:
-  - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  - uses: docker/login-action@v3
-    with:
-      registry: ghcr.io
-      username: ${{ github.actor }}
-      password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  - uses: docker/build-push-action@v6
-    with:
-      context: ./app
-      push: true
-      tags: |
-        ghcr.io/prasanna7599/sre-lab:latest
-        ghcr.io/prasanna7599/sre-lab:${{ github.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          push: true
+          tags: |
+            ghcr.io/prasanna7599/sre-lab:latest
+            ghcr.io/prasanna7599/sre-lab:${{ github.sha }}
 
-deploy:
-needs: build
-runs-on: ubuntu-latest
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
 
-steps:
-  - uses: appleboy/ssh-action@v1.2.0
-    with:
-      host: ${{ secrets.EC2_HOST }}
-      username: ${{ secrets.EC2_USERNAME }}
-      key: ${{ secrets.EC2_SSH_KEY }}
-      script: |
-        set -eu
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -eu
 
-        IMAGE=ghcr.io/prasanna7599/sre-lab:${{ github.sha }}
+            IMAGE=ghcr.io/prasanna7599/sre-lab:${{ github.sha }}
 
-        sudo docker pull "$IMAGE"
+            sudo docker pull "$IMAGE"
 
-        sudo docker rm -f sre-app || true
+            sudo docker rm -f sre-app || true
 
-        sudo docker run -d \
-          --name sre-app \
-          --restart unless-stopped \
-          -p 8000:8000 \
-          -e APP_VERSION=${{ github.sha }} \
-          "$IMAGE"
+            sudo docker run -d \
+              --name sre-app \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              -e APP_VERSION=${{ github.sha }} \
+              "$IMAGE"
 
-        sleep 5
+            sleep 5
 
-        curl -fsS --max-time 10 http://localhost:8000/health
+            curl -fsS --max-time 10 http://localhost:8000/health
