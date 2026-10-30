@@ -1,95 +1,46 @@
 name: Build and Deploy
-
 on:
   push:
     branches: [main]
-
 permissions:
   contents: read
-
 concurrency:
   group: sre-lab-deploy
   cancel-in-progress: false
-
 jobs:
-
   build:
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: ./app
           push: true
           tags: |
             ghcr.io/prasanna7599/sre-lab:latest
             ghcr.io/prasanna7599/sre-lab:${{ github.sha }}
-
   deploy:
     needs: build
     runs-on: ubuntu-latest
-
     steps:
-      - name: Deploy application to EC2
-        uses: appleboy/ssh-action@v1.2.0
+      - uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
+script: |
             set -eu
-
             IMAGE=ghcr.io/prasanna7599/sre-lab:${{ github.sha }}
-
-            echo "Pulling new image..."
             sudo docker pull "$IMAGE"
-
-            echo "Saving previous image..."
-            OLD_IMAGE=$(sudo docker inspect sre-app --format='{{.Config.Image}}' 2>/dev/null || true)
-
-            echo "Stopping previous container..."
             sudo docker rm -f sre-app || true
-
-            echo "Starting new container..."
-            sudo docker run -d \
-              --name sre-app \
-              --restart unless-stopped \
-              -p 8000:8000 \
-              -e APP_VERSION=${{ github.sha }} \
-              "$IMAGE"
-
-            echo "Waiting for application..."
+            sudo docker run -d --name sre-app --restart unless-stopped -p 8000:8000 -e APP_VERSION=${{ github.sha }} "$IMAGE"
             sleep 5
-
-            if curl -fsS --max-time 10 http://localhost:8000/health; then
-              echo "Deployment successful!"
-            else
-              echo "Health check failed. Rolling back..."
-
-              sudo docker rm -f sre-app || true
-
-              if [ -n "$OLD_IMAGE" ]; then
-                sudo docker run -d \
-                  --name sre-app \
-                  --restart unless-stopped \
-                  -p 8000:8000 \
-                  "$OLD_IMAGE"
-              fi
-
-              exit 1
-            fi
+            curl -fsS http://localhost:8000/health
