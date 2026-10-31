@@ -9,7 +9,7 @@ class Handler(BaseHTTPRequestHandler):
             body = b"ok"
         else:
             body = ("SRE portfolio app, version " + VERSION).encode()
-        self.send_response(500 if self.path == "/health" else 200)
+        self.send_response(200)
         self.end_headers()
         self.wfile.write(body)
  
